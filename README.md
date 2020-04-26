@@ -52,7 +52,7 @@ dnsmasq用于dns和dhcp
 redsocks用于将普通tcp，udp流量转发到socks5代理。netfilter-persistent用于ipset iptables的持久化（否则这两个的配置重启会失效），会自动调用ipset-persistent和iptables-persistent，后两个是透明的只需安装。
 
 ### 2.实现基本路由功能
-##### 开启内核的forward功能
+#### 开启内核的forward功能
 ```
 vi /etc/sysctl.conf
 ```
@@ -65,7 +65,7 @@ net.ipv4.ip_forward = 1
 sysctl -p
 ```
 
-##### 配置网卡和网桥
+#### 配置网卡和网桥
 先看看自己的网口列表，以下命令都行
 ```
 ifconfig -a
@@ -119,7 +119,7 @@ netplan apply
 optional表示启动系统时不用等此网口初始化完毕。
 br0的addresses指定自己作为网关的ip，假设上层路由不是192.168.2.0网段。
 
-##### 添加nat
+#### 添加nat
 ```
 iptables -t nat -A POSTROUTING -o ens27 -j MASQUERADE
 iptables -A FORWARD -i ens27 -o br0 -m state --state RELATED,ESTABLISHED -j ACCEPT
@@ -136,7 +136,7 @@ systemctl start netfilter-persistent
 ```
 enable设置为开机启动，start启动服务。
 
-##### 开启DHCP和DNS
+#### 开启DHCP和DNS
 禁用自带的dns服务
 ```
 systemctl disable systemd-resolved
@@ -167,7 +167,7 @@ dhcp-option设置请google，6是指dns，设置为本路由192.168.2.1。<br>
 systemctl restart dnsmasq
 ```
 
-##### 启动时等待网络初始化需要两分钟的处理
+#### 启动时等待网络初始化需要两分钟的处理
 本以为netplan 设置optional后可以不做下面这个，实测是需要的。禁用此服务也行哈。
 ```
 vi /etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service
@@ -181,7 +181,7 @@ ExecStart=/lib/systemd/systemd-networkd-wait-online -q --timeout 20 --any
 如果需要拨号，google下pppoeconf，本文不叙。
 
 ### 3.实现透明代理
-##### 配置redsocks
+#### 配置redsocks
 ```
 vi /etc/redsocks.conf
 ```
@@ -209,7 +209,7 @@ udp部分请自行更改。<br>
 service redsocks restart
 ```
 
-##### 配置ipset
+#### 配置ipset
 ```
 mkdir /routerfiles
 cd /routerfiles
@@ -225,7 +225,7 @@ cat chnroutes.txt | xargs -I ip ipset add chnroutes ip
 ```
 chnroutes你可以从自己喜欢的地方获取，github也很多。
 
-##### 配置iptables
+#### 配置iptables
 iptables是所有软路由代理部分的核心，没有系统差别，有闲的可以自己深入一点学习。
 
 大陆白名单模式，下面的your_server一定要改，别一股脑复制执行。
@@ -272,7 +272,7 @@ iptables -t nat -A 100kg -p tcp -m set --match-set gfwlist dst -j REDIRECT --to-
 iptables -t nat -A 100kg -j RETURN
 ```
 
-##### 国外DNS
+#### 国外DNS
 本文使用 [https://github.com/shawn1m/overture](https://github.com/shawn1m/overture) 。你也可以使用smart dns等。
 
 安装overture到/routerfiles/overture。自己改为最新版本
