@@ -56,7 +56,7 @@ redsocks用于将普通tcp，udp流量转发到socks5代理。netfilter-persiste
 ```
 vi /etc/sysctl.conf
 ```
-添加或取消注释
+添加内容或取消注释
 ```
 net.ipv4.ip_forward = 1
 ```
@@ -156,11 +156,14 @@ cache-size=5000
 
 dhcp-range=192.168.2.50,192.168.2.200,48h
 dhcp-option=6,192.168.2.1
+
+conf-dir=/routerfiles/foriptables/dnsmasq.d/,*.conf
 ```
 no-resolv和no-poll是让dnsmasq不读取/etc/resolv.conf。
 dhcp-range起始和结束ip，过期时间。
 dhcp-option设置请google，6是指dns，设置为本路由192.168.2.1。<br>
-127.0.0.1#5353是将上级服务器指向本地提供在5353端口的dns服务器。参考后文透明代理部分。在做透明代理之前可先用任意dns服务器ip。
+127.0.0.1#5353是将上级服务器指向本地提供在5353端口的dns服务器。参考后文透明代理部分。在做透明代理之前可先用任意dns服务器ip。<br>
+conf-dir用于加载其他配置，此文中用户处理动态的ipset
 
 启动服务
 ```
@@ -214,11 +217,13 @@ service redsocks restart
 mkdir /routerfiles
 cd /routerfiles
 mkdir foriptables
+mkdir foriptables/dnsmasq.d
 cd foriptables
 # 获取大陆ip地址段
 curl 'http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest' | grep ipv4 | grep CN | awk -F\| '{ printf("%s/%d\n", $4, 32-log($5)/log(2)) }' > chnroutes.txt
 #创建ipset
 ipset -N chnroutes hash:net
+ipset -N gfwlist hash:net
 #for i in `cat chnroutes.txt`; do echo ipset -A chnroutes $i >> ipset.sh; done
 #chmod +x ipset.sh && ./ipset.sh
 cat chnroutes.txt | xargs -I ip ipset add chnroutes ip
@@ -246,6 +251,8 @@ iptables -t nat -A 100kg -d 240.0.0.0/4 -j RETURN
 # your_server 是 远程代理服务器的 ip，自己改
 iptables -t nat -A 100kg -d your_server -j RETURN
 
+# gfwlist重定向至 redsocks端口
+iptables -t nat -A 100kg -p tcp -m set --match-set gfwlist dst -j REDIRECT --to-ports 12345
 # 大陆地址不走代理
 iptables -t nat -A 100kg -m set --match-set chnroutes dst -j RETURN
 # 其余的全部重定向至 redsocks端口
@@ -264,16 +271,37 @@ netfilter-persistent save
 
 透明代理已生效，试试。
 
-gfwlist模式就是建立另一个ipset，比如就叫“gfwlist”。其中是被墙ip段。match-set的REDIRECT，其他的RETURN，注意顺序，自己试试。***别无脑把这里抄下来了***
+#### gfwlist模式
+***模式二选一，照搬的悠着点***
+
+先将dnsmasq和gfwlist搭配起来，也就是特定域名解析为ip后动态加入到ipset里。列表获取项目 [https://github.com/cokebar/gfwlist2dnsmasq](https://github.com/cokebar/gfwlist2dnsmasq)。本项目下也预先放了一份在conf下，可自取。配置根据dnsmasq配置，放到下面目录
 ```
-# gfwlist重定向至 redsocks端口
-iptables -t nat -A 100kg -p tcp -m set --match-set gfwlist dst -j REDIRECT --to-ports 12345
-# 其他不走代理
+cd /routerfiles/foriptables/dnsmasq.d
+```
+
+上文iptable配置时已经将gfwlist强制走了代理，只需修改默认规则（最后一条）为不转发即可
+
+查看当前规则，带行号
+```
+iptables -t nat -L 100kg --line-numbers
+```
+删除最后一条规则（默认转发），也可以同时删掉chnroutes那一条，看你需求（啰嗦：多条规则先删大的，因为删了小的后后面的行号就立即变化了）
+```
+iptables -t nat -D 100kg 行号
+```
+添加默认不转发。（这条在最后其实不需要加，加了就是漂亮一点）
+```
+# 默认不走代理
 iptables -t nat -A 100kg -j RETURN
+```
+持久化保存
+```
+netfilter-persistent save
 ```
 
 #### 国外DNS
-本文使用 [https://github.com/shawn1m/overture](https://github.com/shawn1m/overture) 。你也可以使用smart dns等。
+因为有dns污染，所以需要通过代理使用国外的dns服务。
+本文使用 [https://github.com/shawn1m/overture](https://github.com/shawn1m/overture) 。你也可以使用smart dns等。一般就是提供国内的域名国内解析，国外的域名或者gfwlist域名国外解析。
 
 安装overture到/routerfiles/overture。自己改为最新版本
 ```
